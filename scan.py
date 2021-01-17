@@ -1,10 +1,7 @@
 import argparse
 import collections
-import contextlib
-import json
 import os.path
 import shutil
-import sqlite3
 import subprocess
 import tempfile
 import time
@@ -15,38 +12,15 @@ from typing import Dict
 from typing import Generator
 from typing import List
 from typing import NamedTuple
-from typing import Optional
 from typing import Tuple
 
 import ruamel.yaml
 
+from util import db_connect
+from util import get_token
+from util import req
+
 yaml_load = ruamel.yaml.YAML(typ='safe').load
-
-
-class Response(NamedTuple):
-    json: Any
-    links: Dict[str, str]
-
-
-def _parse_link(lnk: Optional[str]) -> Dict[str, str]:
-    if lnk is None:
-        return {}
-
-    ret = {}
-    parts = lnk.split(',')
-    for part in parts:
-        link, _, rel = part.partition(';')
-        link, rel = link.strip(), rel.strip()
-        assert link.startswith('<') and link.endswith('>'), link
-        assert rel.startswith('rel="') and rel.endswith('"'), rel
-        link, rel = link[1:-1], rel[len('rel="'):-1]
-        ret[rel] = link
-    return ret
-
-
-def req(url: str, **kwargs: Any) -> Response:
-    resp = urllib.request.urlopen(urllib.request.Request(url, **kwargs))
-    return Response(json.load(resp), _parse_link(resp.headers['link']))
 
 
 QUERY = (
@@ -173,38 +147,21 @@ def _get_repo_info(repo: str) -> RepoInfo:
     )
 
 
-@contextlib.contextmanager
-def _db() -> Generator[sqlite3.Connection, None, None]:
-    data_table = '''\
-        CREATE TABLE IF NOT EXISTS data (
-            repo, filename, rev,
-            PRIMARY KEY (repo, filename)
-        )
-    '''
-
-    with contextlib.closing(sqlite3.connect('db.db')) as ctx, ctx as db:
-        db.execute(data_table)
-        yield db
-
-
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument('--full-refresh', action='store_true')
     args = parser.parse_args()
 
     if not args.full_refresh:
-        with _db() as db:
+        with db_connect() as db:
             res = db.execute('SELECT DISTINCT repo FROM data').fetchall()
             seen = {repo for repo, in res}
     else:
         seen = set()
 
-    with open(os.path.expanduser('~/.github-auth.json')) as f:
-        contents = json.load(f)
-
     by_org: Dict[str, List[RepoInfo]] = collections.defaultdict(list)
 
-    for repo_s in _repos(contents['token']):
+    for repo_s in _repos(get_token()):
         if repo_s in seen:
             continue
         else:
@@ -229,7 +186,7 @@ def main() -> int:
         for repo in repos
         for filename in repo.filenames
     ]
-    with _db() as db:
+    with db_connect() as db:
         db.executemany('INSERT OR REPLACE INTO data VALUES (?, ?, ?)', rows)
 
     return 0
