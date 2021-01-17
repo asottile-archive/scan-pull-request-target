@@ -3,6 +3,7 @@ import collections
 import contextlib
 import json
 import os.path
+import shutil
 import sqlite3
 import subprocess
 import tempfile
@@ -143,13 +144,16 @@ def _get_repo_info(repo: str) -> RepoInfo:
         ))
         subprocess.check_call((*git, 'reset', '-q', '--', '.github/workflows'))
         subprocess.check_call((*git, 'checkout', '--', '.github/workflows'))
+        rev = subprocess.check_output((*git, 'rev-parse', 'HEAD')).strip()
 
         filenames = []
         for filename in os.listdir(os.path.join(tmpdir, '.github/workflows')):
             filename = os.path.join('.github/workflows', filename)
             if not filename.endswith('.yml'):
                 continue
-            with open(os.path.join(tmpdir, filename)) as f:
+
+            tmp_filename = os.path.join(tmpdir, filename)
+            with open(tmp_filename) as f:
                 try:
                     contents = yaml_load(f)
                 except ruamel.yaml.YAMLError:
@@ -158,7 +162,9 @@ def _get_repo_info(repo: str) -> RepoInfo:
             if _vulnerable_on(contents) and _vulnerable_jobs(contents):
                 filenames.append(filename)
 
-        rev = subprocess.check_output((*git, 'rev-parse', 'HEAD')).strip()
+                dest = os.path.join('files', repo, rev.decode(), filename)
+                os.makedirs(os.path.dirname(dest), exist_ok=True)
+                shutil.copy(tmp_filename, dest)
 
     return RepoInfo(
         repo=repo,
