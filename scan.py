@@ -1,5 +1,6 @@
 import argparse
 import collections
+import hashlib
 import os.path
 import shutil
 import subprocess
@@ -12,6 +13,8 @@ from typing import Dict
 from typing import Generator
 from typing import List
 from typing import NamedTuple
+from typing import Optional
+from typing import Set
 from typing import Tuple
 
 import ruamel.yaml
@@ -47,12 +50,48 @@ def _repos(token: str) -> Generator[str, None, None]:
                 yield result['repository']['full_name']
 
 
-class RepoInfo(NamedTuple):
+class File(NamedTuple):
+    name: str
+    checksum: str
+
+    def css_class(self, vulnerable: Dict[str, Optional[bool]]) -> str:
+        return {
+            None: 'file-unknown',
+            True: 'file-bad',
+            False: 'file-ok',
+        }[vulnerable[self.checksum]]
+
+
+class Repo(NamedTuple):
     repo: str
     rev: str
     account_type: str
     star_count: int
-    filenames: Tuple[str, ...]
+    files: Tuple[File, ...]
+
+    @property
+    def repo1(self) -> str:
+        repo1, _, _ = self.repo.partition('/')
+        return repo1
+
+    @property
+    def repo2(self) -> str:
+        _, _, repo2 = self.repo.partition('/')
+        return repo2
+
+    def css_class(
+            self,
+            vulnerable: Dict[str, Optional[bool]],
+            done: Set[str],
+    ) -> str:
+        if self.repo in done:
+            return 'repo-done'
+        elif all(vulnerable[file.checksum] is False for file in self.files):
+            return 'repo-ok'
+        elif any(vulnerable[file.checksum] is True for file in self.files):
+            return 'repo-bad'
+        else:
+            return 'repo-unknown'
 
     @property
     def url(self) -> str:
@@ -76,8 +115,11 @@ def _vulnerable_on(contents: Any) -> bool:
     cfg = on['pull_request_target']
     if cfg is None:
         return True
-    elif 'types' not in cfg or not isinstance(cfg['types'], list):
+    elif 'types' not in cfg:
         return True
+    elif isinstance(cfg['types'], str):
+        return cfg['types'] in {'opened', 'synchronize', 'reopened'}
+
     return bool(set(cfg['types']) & {'opened', 'synchronize', 'reopened'})
 
 
@@ -111,7 +153,7 @@ def _vulnerable_jobs(contents: Dict[str, Any]) -> bool:
         return False
 
 
-def _get_repo_info(repo: str, token: str) -> RepoInfo:
+def _get_repo_info(repo: str, token: str) -> Repo:
     resp = req(
         f'https://api.github.com/repos/{repo}',
         headers={'Authorization': f'token {token}'},
@@ -129,7 +171,7 @@ def _get_repo_info(repo: str, token: str) -> RepoInfo:
         subprocess.check_call((*git, 'checkout', '--', '.github/workflows'))
         rev = subprocess.check_output((*git, 'rev-parse', 'HEAD')).strip()
 
-        filenames = []
+        files = []
         for filename in os.listdir(os.path.join(tmpdir, '.github/workflows')):
             filename = os.path.join('.github/workflows', filename)
             if not filename.endswith('.yml'):
@@ -143,18 +185,21 @@ def _get_repo_info(repo: str, token: str) -> RepoInfo:
                     continue
 
             if _vulnerable_on(contents) and _vulnerable_jobs(contents):
-                filenames.append(filename)
+                with open(tmp_filename, 'rb') as f_b:
+                    checksum = hashlib.sha256(f_b.read()).hexdigest()
+
+                files.append(File(filename, checksum))
 
                 dest = os.path.join('files', repo, rev.decode(), filename)
                 os.makedirs(os.path.dirname(dest), exist_ok=True)
                 shutil.copy(tmp_filename, dest)
 
-    return RepoInfo(
+    return Repo(
         repo=repo,
         rev=rev.decode(),
         account_type=account_type,
         star_count=star_count,
-        filenames=tuple(sorted(filenames)),
+        files=tuple(sorted(files)),
     )
 
 
@@ -174,7 +219,7 @@ def main() -> int:
     else:
         seen = set()
 
-    by_org: Dict[str, List[RepoInfo]] = collections.defaultdict(list)
+    by_org: Dict[str, List[Repo]] = collections.defaultdict(list)
 
     for repo_s in _repos(token):
         if repo_s in seen:
@@ -185,25 +230,32 @@ def main() -> int:
         org, _ = repo_s.split('/')
         by_org[org].append(_get_repo_info(repo_s, token))
 
-    by_org = {k: [r for r in v if r.filenames] for k, v in by_org.items()}
+    by_org = {k: [r for r in v if r.files] for k, v in by_org.items()}
     by_org = {k: v for k, v in sorted(by_org.items()) if v}
 
     for org, repos in by_org.items():
         for repo in repos:
             print(repo.repo)
-            for filename in repo.filenames:
+            for filename, _ in repo.files:
                 print(f'- {repo.file_url(filename)}')
             print()
 
     rows = [
-        (repo.repo, filename, repo.rev, repo.account_type, repo.star_count)
+        (
+            repo.repo,
+            filename,
+            repo.rev,
+            repo.account_type,
+            repo.star_count,
+            checksum,
+        )
         for repos in by_org.values()
         for repo in repos
-        for filename in repo.filenames
+        for filename, checksum in repo.files
     ]
     seen_rows = [(repo,) for repo in seen]
     with db_connect() as db:
-        query = 'INSERT OR REPLACE INTO data VALUES (?, ?, ?, ?, ?)'
+        query = 'INSERT OR REPLACE INTO data VALUES (?, ?, ?, ?, ?, ?)'
         db.executemany(query, rows)
         db.executemany('INSERT OR REPLACE INTO seen VALUES (?)', seen_rows)
 

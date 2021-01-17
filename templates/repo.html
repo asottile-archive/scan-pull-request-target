@@ -1,0 +1,72 @@
+<!doctype html>
+<html>
+<head>
+  <title>repo: {{repo.repo}}</title>
+  <style>
+    .repo, .file {
+        border-left: 3px solid #000;
+        padding: 6px;
+    }
+    .repo-done {
+        border-left-color: #1e77d3;
+    }
+    .repo-ok, .file-ok {
+        border-left-color: #1f913d;
+    }
+    .repo-bad, .file-bad {
+        border-left-color: #a31c1c;
+    }
+    .repo-unknown, .file-unknown {
+        border-left-color: #edd118;
+    }
+  </style>
+</head>
+<body>
+<h1 class="repo {{repo.css_class(vulnerable, done)}}">repo: {{repo.repo}}</h1>
+<div>stars: {{repo.star_count}}</div>
+<div>account: {{repo.account_type}}</div>
+<button class="js-done" data-repo="{{repo.repo}}">mark done</button>
+
+{% for file in repo.files %}
+    <div data-checksum="{{file.checksum}}">
+      <h3 class="file {{file.css_class(vulnerable)}}">{{file.name}}</h3>
+      <button class="js-bad">mark bad</button>
+      <button class="js-ok">mark ok</button>
+      <button class="js-clear">clear status</button>
+      <pre>{{contents[file.name]}}</pre>
+    </div>
+{% endfor %}
+<script>
+    document.body.addEventListener('click', (e) => {
+        let target = e.target;
+        while (
+                target !== document.body &&
+                !target.classList.contains('js-bad') &&
+                !target.classList.contains('js-ok') &&
+                !target.classList.contains('js-clear') &&
+                !target.classList.contains('js-done')
+        ) {
+            target = target.parentNode;
+        }
+
+        if (target.classList.contains('js-bad')) {
+            let checksum = target.parentNode.dataset.checksum;
+            window.fetch(`/make-bad/${checksum}`, {method: 'POST'})
+                .then(() => {window.location.reload();});
+        } else if (target.classList.contains('js-ok')) {
+            let checksum = target.parentNode.dataset.checksum;
+            window.fetch(`/make-good/${checksum}`, {method: 'POST'})
+                .then(() => {window.location.reload();});
+        } else if (target.classList.contains('js-clear')) {
+            let checksum = target.parentNode.dataset.checksum;
+            window.fetch(`/clear-status/${checksum}`, {method: 'POST'})
+                .then(() => {window.location.reload();});
+        } else if (target.classList.contains('js-done')) {
+            let repo = target.dataset.repo;
+            window.fetch(`/mark-done/${repo}`, {method: 'POST'})
+                .then(() => {window.location.reload();});
+        }
+    });
+</script>
+</body>
+</html>

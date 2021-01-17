@@ -1,0 +1,37 @@
+<!doctype html>
+<html>
+<head>
+  <title>all repos</title>
+  <style>
+    a {
+        color: #000 !important;
+    }
+    .repo {
+        border-bottom: 1px solid #000;
+        border-left: 3px solid #000;
+        padding: 6px;
+    }
+    .repo-done {
+        border-left-color: #1e77d3;
+    }
+    .repo-ok {
+        border-left-color: #1f913d;
+    }
+    .repo-bad {
+        border-left-color: #a31c1c;
+    }
+    .repo-unknown {
+        border-left-color: #edd118;
+    }
+  </style>
+</head>
+<body>
+<h1>repos</h1>
+{% for repo in repos %}
+    <div class="repo {{repo.css_class(vulnerable, done)}}">
+      <a href="{{url_for('repo', repo1=repo.repo1, repo2=repo.repo2)}}">{{repo.repo}}</a>
+      ★ {{repo.star_count}}
+    </div>
+{% endfor %}
+</body>
+</html>
