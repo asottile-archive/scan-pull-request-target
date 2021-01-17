@@ -169,6 +169,8 @@ def main() -> int:
         with db_connect() as db:
             res = db.execute('SELECT DISTINCT repo FROM data').fetchall()
             seen = {repo for repo, in res}
+            res = db.execute('SELECT repo FROM seen').fetchall()
+            seen.update(repo for repo, in res)
     else:
         seen = set()
 
@@ -199,9 +201,11 @@ def main() -> int:
         for repo in repos
         for filename in repo.filenames
     ]
+    seen_rows = [(repo,) for repo in seen]
     with db_connect() as db:
         query = 'INSERT OR REPLACE INTO data VALUES (?, ?, ?, ?, ?)'
         db.executemany(query, rows)
+        db.executemany('INSERT OR REPLACE INTO seen VALUES (?)', seen_rows)
 
     return 0
 

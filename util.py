@@ -44,9 +44,13 @@ def db_connect() -> Generator[sqlite3.Connection, None, None]:
             PRIMARY KEY (repo, filename)
         )
     '''
+    seen_table = '''\
+        CREATE TABLE IF NOT EXISTS seen (repo, PRIMARY KEY (repo))
+    '''
 
     with contextlib.closing(sqlite3.connect('db.db')) as ctx, ctx as db:
         db.execute(data_table)
+        db.execute(seen_table)
         yield db
 
 
