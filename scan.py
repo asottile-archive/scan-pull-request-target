@@ -3,13 +3,19 @@ import collections
 import contextlib
 import json
 import os.path
+import sqlite3
+import subprocess
+import tempfile
 import time
 import urllib.parse
 import urllib.request
-import tempfile
-import sqlite3
-import subprocess
-from typing import Any, Dict, NamedTuple, Optional, List, Generator, Tuple
+from typing import Any
+from typing import Dict
+from typing import Generator
+from typing import List
+from typing import NamedTuple
+from typing import Optional
+from typing import Tuple
 
 import ruamel.yaml
 
@@ -183,7 +189,7 @@ def main() -> int:
     if not args.full_refresh:
         with _db() as db:
             res = db.execute('SELECT DISTINCT repo FROM data').fetchall()
-            seen = set(repo for repo, in res)
+            seen = {repo for repo, in res}
     else:
         seen = set()
 
