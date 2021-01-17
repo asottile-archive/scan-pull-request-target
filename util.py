@@ -40,7 +40,7 @@ def req(url: str, **kwargs: Any) -> Response:
 def db_connect() -> Generator[sqlite3.Connection, None, None]:
     data_table = '''\
         CREATE TABLE IF NOT EXISTS data (
-            repo, filename, rev,
+            repo, filename, rev, account_type, star_count,
             PRIMARY KEY (repo, filename)
         )
     '''

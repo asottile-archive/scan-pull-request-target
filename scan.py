@@ -50,6 +50,8 @@ def _repos(token: str) -> Generator[str, None, None]:
 class RepoInfo(NamedTuple):
     repo: str
     rev: str
+    account_type: str
+    star_count: int
     filenames: Tuple[str, ...]
 
     @property
@@ -109,7 +111,14 @@ def _vulnerable_jobs(contents: Dict[str, Any]) -> bool:
         return False
 
 
-def _get_repo_info(repo: str) -> RepoInfo:
+def _get_repo_info(repo: str, token: str) -> RepoInfo:
+    resp = req(
+        f'https://api.github.com/repos/{repo}',
+        headers={'Authorization': f'token {token}'},
+    )
+    account_type = resp.json['owner']['type']
+    star_count = resp.json['stargazers_count']
+
     with tempfile.TemporaryDirectory() as tmpdir:
         git = ('git', '-c', 'protocol.version=2', '-C', tmpdir)
         subprocess.check_call((
@@ -143,6 +152,8 @@ def _get_repo_info(repo: str) -> RepoInfo:
     return RepoInfo(
         repo=repo,
         rev=rev.decode(),
+        account_type=account_type,
+        star_count=star_count,
         filenames=tuple(sorted(filenames)),
     )
 
@@ -151,6 +162,8 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument('--full-refresh', action='store_true')
     args = parser.parse_args()
+
+    token = get_token()
 
     if not args.full_refresh:
         with db_connect() as db:
@@ -161,14 +174,14 @@ def main() -> int:
 
     by_org: Dict[str, List[RepoInfo]] = collections.defaultdict(list)
 
-    for repo_s in _repos(get_token()):
+    for repo_s in _repos(token):
         if repo_s in seen:
             continue
         else:
             seen.add(repo_s)
 
         org, _ = repo_s.split('/')
-        by_org[org].append(_get_repo_info(repo_s))
+        by_org[org].append(_get_repo_info(repo_s, token))
 
     by_org = {k: [r for r in v if r.filenames] for k, v in by_org.items()}
     by_org = {k: v for k, v in sorted(by_org.items()) if v}
@@ -181,13 +194,14 @@ def main() -> int:
             print()
 
     rows = [
-        (repo.repo, filename, repo.rev)
+        (repo.repo, filename, repo.rev, repo.account_type, repo.star_count)
         for repos in by_org.values()
         for repo in repos
         for filename in repo.filenames
     ]
     with db_connect() as db:
-        db.executemany('INSERT OR REPLACE INTO data VALUES (?, ?, ?)', rows)
+        query = 'INSERT OR REPLACE INTO data VALUES (?, ?, ?, ?, ?)'
+        db.executemany(query, rows)
 
     return 0
 
