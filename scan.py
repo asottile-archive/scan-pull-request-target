@@ -235,10 +235,7 @@ def main() -> int:
 
     for org, repos in by_org.items():
         for repo in repos:
-            print(repo.repo)
-            for filename, _ in repo.files:
-                print(f'- {repo.file_url(filename)}')
-            print()
+            print(f'- http://localhost:8000/repo/{repo.repo}')
 
     rows = [
         (
