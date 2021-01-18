@@ -22,10 +22,119 @@
   </style>
 </head>
 <body>
-<h1 class="repo {{repo.css_class(vulnerable, done)}}">repo: {{repo.repo}}</h1>
+<h1 class="repo {{repo.css_class(vulnerable, done)}}"><a href="{{repo.url}}">{{repo.repo}}</a></h1>
 <div>stars: {{repo.star_count}}</div>
 <div>account: {{repo.account_type}}</div>
-<button class="js-done" data-repo="{{repo.repo}}">mark done</button>
+<div><button class="js-done" data-repo="{{repo.repo}}">mark done</button></div>
+
+{% if repo.css_class(vulnerable, done) == 'repo-bad' %}
+
+<div>
+<p>
+(Responsible Disclosure): GitHub Actions vulnerability {{repo.repo}}
+</p>
+
+<p>Hello!</p>
+
+<p>
+I've identified your repository ({{repo.url}}) as being vulnerable to attack
+through an unprivileged pull request.
+</p>
+
+<p>
+The particular vulnerability involves the <code>pull_request_target</code>
+trigger for GitHub Actions.  This event is different from the
+<code>pull_request</code> event in that it is intended to run in the context
+of the repository (and thus has access to credentials).  The particular class
+of vulnerable configurations involves <code>pull_request_target</code> coupled
+with checking out pull request code.  A specially crafted pull request can
+utilize this combination to expose credentials as an output of the workflow.
+</p>
+
+<p>
+The three pre-requisites are met by the workflows in this repository:
+
+<ul>
+    <li>- The workflow uses the `pull_request_target` trigger</li>
+    <li>- The workflow uses `actions/checkout` to check out the pull requested code</li>
+    <li>- The workflow executes arbitrary code from the pull request branch</li>
+</ul>
+</p>
+
+<p>
+The vulnerable workflows:
+<ul>
+{% for file in repo.files %}
+    {% if file.checksum in vulnerable %}
+        <li>{{file.name}}</li>
+    {% endif %}
+{% endfor %}
+</ul>
+</p>
+
+<p>
+A pull request needs only to modify the arbitrary code execution to perform
+something similar to this:
+</p>
+
+<p>
+<code>echo "NODE_OPTIONS=--experimental-modules --experimental-loader=data:text/javascript,console.warn(Buffer.from(JSON.stringify(process.env)).toString('hex'));" >> $GITHUB_ENV</code>
+</p>
+
+<p>
+(this could be done through an npm command, post-installation step, shell
+script, etc.)
+</p>
+
+<p>
+This will cause all future <code>nodejs</code> processes to write their
+environment to the output.  Note that <code>hex</code> is used to obfuscate
+the secrets because otherwise GitHub will filter them from the output.
+</p>
+
+<p>
+The <code>nodejs</code> process targetted here is the one which performs the
+cleanup for the <code>actions/checkout</code> step.  This process has access
+to a privileged token through the <code>INPUT_TOKEN</code> environment
+variable.  This environment variable provides full write access to the
+repository.
+</p>
+
+<p>
+If you're interested in a full proof-of-concept I can reply with a patch which
+triggers this against your particular repository -- I did not want to attempt
+this with an actual pull request as it could tip off malicious users to a
+vulnerability in your repository.
+</p>
+
+<p>
+For more information about this vulnerability, please see:
+<ul>
+    <li>- (proof of concept): https://github.com/throwaway-gha/gha-test/runs/1705263111</li>
+    <li>- (github's blog post about this): https://securitylab.github.com/research/github-actions-preventing-pwn-requests</li>
+    <li>- (related security bug): https://bugs.chromium.org/p/project-zero/issues/detail?id=2070</li>
+</ul>
+</p>
+
+<p>
+Even if your organization does not have a paid bug bounty I would appreciate
+some support for the work I've put in here.
+<ul>
+    <li>- consider sponsoring: https://github.com/sponsors/asottile</li>
+    <li>- check out my startup: https://pre-commit.ci</li>
+</ul>
+</p>
+
+<p>
+Thanks!
+</p>
+
+<p>
+Anthony
+</p>
+</div>
+
+{% endif %}
 
 {% for file in repo.files %}
     <div data-checksum="{{file.checksum}}">
