@@ -212,10 +212,8 @@ def main() -> int:
 
     if not args.full_refresh:
         with db_connect() as db:
-            res = db.execute('SELECT DISTINCT repo FROM data').fetchall()
-            seen = {repo for repo, in res}
             res = db.execute('SELECT repo FROM seen').fetchall()
-            seen.update(repo for repo, in res)
+            seen = {repo for repo, in res}
     else:
         seen = set()
 
