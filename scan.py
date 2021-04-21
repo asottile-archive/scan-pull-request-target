@@ -43,7 +43,7 @@ def _repos(token: str) -> Generator[str, None, None]:
             yield result['repository']['full_name']
 
     while 'next' in resp.links:
-        time.sleep(3)  # search api limit
+        time.sleep(10)  # search api limit
         resp = req(resp.links['next'], headers=headers)
         for result in resp.json['items']:
             if not result['repository']['fork']:
@@ -181,7 +181,7 @@ def _get_repo_info(repo: str, token: str) -> Repo:
             with open(tmp_filename) as f:
                 try:
                     contents = yaml_load(f)
-                except ruamel.yaml.YAMLError:
+                except Exception:  # ideally it'd be YamlError
                     continue
 
             if _vulnerable_on(contents) and _vulnerable_jobs(contents):
